@@ -13,7 +13,8 @@ const int K_value = 28;
 const int M_value = 9;
 
 // string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_12.fastq";
-string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_10000.fastq";
+string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_100000.fastq";
+// string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005.fastq";
 //string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/merged.fastq";
 
 
@@ -119,26 +120,26 @@ int main(int argc, char** argv)
 
     //-------------correctness test----------------
 
-    kmer_index first(comm);
-    first.build_mpiio<fastq_paser, seq_iter>(test_file_name, comm);
-    if(test_for_fastq(test_file_name, comm) == true)
-        std::cout << "Ran all test cases successfully" << std::endl;
-    else 
-        std::cout << "Test cases failed" << std::endl;
+    // kmer_index first(comm);
+    // first.build_mpiio<fastq_paser, seq_iter>(test_file_name, comm);
+    // if(test_for_fastq(test_file_name, comm) == true)
+    //     std::cout << "Ran all test cases successfully" << std::endl;
+    // else 
+    //     std::cout << "Test cases failed" << std::endl;
     
     //----------------------------------------------
 
 
     //-------------time measurement-----------------
     
-    // auto begin = std::chrono::high_resolution_clock::now();    
+    auto begin = std::chrono::high_resolution_clock::now();    
 
-    // //KmerIndex creation
-    // kmer_index first(comm);
-    // first.build_mpiio<fastq_paser, seq_iter>(test_file_name, comm);
+    //KmerIndex creation
+    kmer_index first(comm);
+    first.build_mpiio<fastq_paser, seq_iter>(test_file_name, comm);
     
-    // auto end = std::chrono::high_resolution_clock::now();
-    // std::cout << "Time taken for building index : " << std::chrono::duration<double>(end-begin).count() << std::endl;
+    auto end = std::chrono::high_resolution_clock::now();
+    std::cout << "Time taken for building index : " << std::chrono::duration<double>(end-begin).count() << std::endl;
     
     //----------------------------------------------
   
@@ -161,6 +162,14 @@ bool test_for_fastq(std::string file_name, mxx::comm& comm)
     kmer_index first(comm);
     first.build_mmap<fastq_paser, seq_iter>(file_name, comm);
     auto counts = first.find(kmerind_kmers);
+    
+    // print counts
+    if(comm.rank() == 0) {
+        std::cout << "counts.size() = " << counts.size() << std::endl;
+        for (auto x : counts) {
+            std::cout << x.first << " -> " << x.second << std::endl;
+        }
+    }
     
     bool passed = equal_my(counts, actual_counts);
     return passed;
@@ -187,8 +196,9 @@ bool equal_my(kmerAndCountsVec counts, MykmerAndCountsVec file_data)
             else
                 i_correct = false;
         }
-        else
+        else {
             i_correct = false;
+        }
 
 
         if(i_correct == false)
@@ -224,7 +234,8 @@ MykmerAndCountsVec read_kmer_counts(std::string file_name)
         file_kmers.push_back(kmer);
         file_counts.push_back(stoi(line));
     }
-    
+    if(file_kmers.size() == file_counts.size() == 0)
+        std::cout << "Error in reading count file" << std::endl;
     return std::make_pair(file_kmers, file_counts);
 }
 
