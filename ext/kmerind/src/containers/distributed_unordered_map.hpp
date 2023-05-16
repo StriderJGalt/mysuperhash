@@ -2005,6 +2005,7 @@ namespace dsc  // distributed std container
         // then send the raw k-mers.
         // communication part
         std::vector< supermer_type > output;
+        size_t total_no_kmers = 0;
         if (this->comm.size() > 1) {
           BL_BENCH_START(insert);
           // first remove duplicates.  sort, then get unique, finally remove the rest.  may not be needed
@@ -2013,17 +2014,17 @@ namespace dsc  // distributed std container
           // std::vector< TupleType > buffer;
           // ::imxx::distribute<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, buffer, this->comm);
           // input.swap(buffer);
-          ::imxx::distribute_supermers<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, output, this->comm);
+          ::imxx::distribute_supermers<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, kmer_size, total_no_kmers, output, this->comm);
           BL_BENCH_END(insert, "dist_data", input.size());
         }
 
 
+          BL_BENCH_START(insert);
+          // vector< Key > kmers;
           size_t count = 0;
-          auto trans = [](Key const & x) {
-            return ::std::make_pair(x, T(1));
-          };
+          size_t before = this->c.size();
 
-          vector< Key > kmers;
+          this->local_reserve(total_no_kmers);
 
           // extract kmers from supermers
           for (auto const & supermer : output) {
@@ -2043,33 +2044,58 @@ namespace dsc  // distributed std container
             //   }
             // }
             // std::cout << std::endl;
-            if(supermer.size() >= kmer_size) {
-              for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e) {
-                kmers.emplace_back(it_b, it_e);
+
+            // if(supermer.size() >= kmer_size) {
+            //   for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e) {
+            //     kmers.emplace_back(it_b, it_e);
+            //   }
+            // }
+
+            for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e, count++) {
+              Key kmer(it_b);
+              if(this->c.find(kmer) == this->c.end()) {
+                this->c.emplace(kmer, T(1));
+              } else {
+                // this->c[kmer]++;
+                this->c.at(kmer) == this->r(this->c.at(kmer), T(1));
               }
             }
+          
           }
 
-          BL_BENCH_START(insert);
-          // preallocate.  easy way out - estimate to be 1/2 of input.  then at the end, resize if significantly less.
-          //this->c.resize(input.size() / 2);
-          if (this->comm.rank() == 0)
-          std::cout << "rank " << this->comm.rank() <<
-            " BEFORE input=" << input.size() << " size=" << this->local_size() << " buckets=" << this->c.bucket_count() << std::endl;
+          if(this->c.size()!=before) {
+            this->local_changed = true;
+          }
+          BL_BENCH_END(insert, "extract_kmers", count);
 
-          // then insert all the rest,
-          auto local_start = ::bliss::iterator::make_transform_iterator(kmers.begin(), trans);
-          auto local_end = ::bliss::iterator::make_transform_iterator(kmers.end(), trans);
-          // insert
-          if (!::std::is_same<Predicate, ::bliss::filter::TruePredicate>::value)
-            count += this->Base::local_insert(local_start, local_end, pred);
-          else
-            count += this->Base::local_insert(local_start, local_end);
-        BL_BENCH_END(insert, "local_insert", this->local_size());
+          // size_t count = 0;
+          // auto trans = [](Key const & x) {
+          //   return ::std::make_pair(x, T(1));
+          // };
+
+        //   BL_BENCH_START(insert);
+        //   // preallocate.  easy way out - estimate to be 1/2 of input.  then at the end, resize if significantly less.
+        //   //this->c.resize(input.size() / 2);
+        //   if (this->comm.rank() == 0)
+        //   std::cout << "rank " << this->comm.rank() <<
+        //     " BEFORE input=" << input.size() << " size=" << this->local_size() << " buckets=" << this->c.bucket_count() << std::endl;
+
+        //   // then insert all the rest,
+        //   auto local_start = ::bliss::iterator::make_transform_iterator(kmers.begin(), trans);
+        //   auto local_end = ::bliss::iterator::make_transform_iterator(kmers.end(), trans);
+        //   // insert
+        //   if (!::std::is_same<Predicate, ::bliss::filter::TruePredicate>::value)
+        //     count += this->Base::local_insert(local_start, local_end, pred);
+        //   else
+        //     count += this->Base::local_insert(local_start, local_end);
+        // BL_BENCH_END(insert, "local_insert", this->local_size());
 
 
         BL_BENCH_REPORT_MPI_NAMED(insert, "count_hashmap:insert_key", this->comm);
 
+        if(count != total_no_kmers) {
+          std::cout << "count != total_no_kmers" << std::endl;
+        }
         return count;
 
       }

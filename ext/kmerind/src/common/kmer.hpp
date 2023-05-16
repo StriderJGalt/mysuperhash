@@ -260,6 +260,10 @@ namespace bliss
       }
     }
     
+    explicit Kmer(CharVectorConstIterator begin) {
+      this->fillFromChars(begin);
+    }
+    
     /// copy constructor  - want result of iterator to be copiable here so no "explicit"
     Kmer(Kmer const& other) {
 #pragma GCC diagnostic push

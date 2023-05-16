@@ -1234,6 +1234,8 @@ namespace imxx
   void distribute_supermers(::std::vector<V>& input, ToRank const & to_rank,
                   ::std::vector<SIZE> & recv_counts,
                   ::std::vector<SIZE> & i2o,
+                  SIZE const kmer_size,
+                  SIZE & total_no_kmers,
                   vector<typename ::std::tuple_element<1, V>::type> & supermers,
                   ::mxx::comm const &_comm, bool const & preserve_input = false) {
     BL_BENCH_INIT(distribute);
@@ -1325,8 +1327,10 @@ namespace imxx
     // }
     // // ----------------------------------------------
 
+    BL_BENCH_START(distribute);
     //function to transform input into a 1d vector of supermers appended consecutively keeping track of offsets of each supermer in supermer_lengths and update send_counts so that it contains the no: characters (need not be char) to be sent each process and send_counts_for_supermer_lengths contains the no: of supermers to be sent to each process
     imxx::local::serialize_supermers<V, SIZE>(input, concatenated_supermers_to_be_sent, supermer_lengths_to_be_sent, send_counts, send_counts_for_supermer_lengths);
+    BL_BENCH_COLLECTIVE_END(distribute, "serialize", concatenated_supermers_to_be_sent.size(), _comm);
 
     // // printing for debugging----------------------------------------------
     // // print the vectors concatenated_supermers_to_be_sent, supermer_lengths_to_be_sent, send_counts, send_counts_for_supermer_lengths to check if they are correct
@@ -1480,9 +1484,10 @@ namespace imxx
     // }
     // // --------------------------------------------------------------------
 
+    BL_BENCH_START(distribute);
     // unpack concatenated_supermers into supermers and using supermer_lengths
     imxx::local::unserialize_supermers<supermer_type, SIZE> (concatenated_supermers, supermer_lengths, supermers);
-
+    BL_BENCH_COLLECTIVE_END(distribute, "unserialize", supermers.size(), _comm);
     // // printing for debugging----------------------------------------------
     // // print the vectors supermer_lengths and supermers to check if they are correct
     // // use mpi barrier to make sure that one process has printed all the vectors before proceeding to next process
@@ -1519,6 +1524,9 @@ namespace imxx
     //   imxx::local::unpermute_inplace(input, i2o, 0, input.size());
     //   BL_BENCH_END(distribute, "unpermute_inplace", input.size());
     // }
+
+    for(auto x : supermer_lengths) total_no_kmers += x-kmer_size+1;
+
     BL_BENCH_REPORT_MPI_NAMED(distribute, "imxx:distribute", _comm);
 
   }
