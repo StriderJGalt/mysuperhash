@@ -915,9 +915,9 @@ namespace imxx
         SIZE_TYPE bin_elements_remaining = send_counts_for_supermer_lengths[bin_index];
         SIZE_TYPE send_count = 0;
         for(auto & tuple : input) {
-          concatenated_supermers.insert(concatenated_supermers.end(), std::get<1>(tuple).begin(), std::get<1>(tuple).end());
           SIZE_TYPE supermer_length = std::get<1>(tuple).size();
           supermer_lengths.push_back(supermer_length);
+          concatenated_supermers.insert(concatenated_supermers.end(), std::get<1>(tuple).begin(), std::get<1>(tuple).end());
           while(bin_elements_remaining == 0 && bin_index < send_counts_for_supermer_lengths.size()-1) {
             send_counts.push_back(send_count);
             send_count = 0;
@@ -925,6 +925,74 @@ namespace imxx
             bin_elements_remaining = send_counts_for_supermer_lengths[bin_index];
           }          
           send_count += supermer_length;
+          bin_elements_remaining--;
+        } 
+        send_counts.push_back(send_count);
+    }
+
+    // function to serialize supermers as above but use only 2 bits per character
+    template <typename INPUT_TUPLE_TYPE, typename SIZE_TYPE>
+    void serialize_supermers_2bit(const std::vector<INPUT_TUPLE_TYPE> & input, 
+        typename std::tuple_element<1, INPUT_TUPLE_TYPE>::type & concatenated_supermers,
+        std::vector<SIZE_TYPE> & supermer_lengths, 
+        std::vector<SIZE_TYPE> & send_counts,
+        std::vector<SIZE_TYPE> & send_counts_for_supermer_lengths) {
+
+        if(input.empty()) {
+          return;
+        }
+
+        send_counts_for_supermer_lengths.clear();
+        send_counts_for_supermer_lengths.swap(send_counts); //not sure if this has copy overhead
+
+        //concatenate supermers and add their lengths to supermer_lengths
+        //update send counts by adding lengths of supermers in each bin and storing in send_counts  
+        SIZE_TYPE bin_index = 0;
+        SIZE_TYPE bin_elements_remaining = send_counts_for_supermer_lengths[bin_index];
+        SIZE_TYPE send_count = 0;
+        unsigned char current_char = 0;
+        for(auto & tuple : input) {
+          SIZE_TYPE supermer_length = std::get<1>(tuple).size();
+          supermer_lengths.push_back(supermer_length);
+          // concatenated_supermers.insert(concatenated_supermers.end(), std::get<1>(tuple).begin(), std::get<1>(tuple).end());
+          // insert 2 bit encoded supermer
+          for(auto & c : std::get<1>(tuple)) {
+            switch (current_char)
+            {
+            case 0:
+              concatenated_supermers.push_back(c & 0x03);
+              current_char++;
+              break;
+
+            case 1:
+              concatenated_supermers.back() |= ((c & 0x03) << 2);
+              current_char++;
+              break;
+
+            case 2:
+              concatenated_supermers.back() |= ((c & 0x03) << 4);
+              current_char++;
+              break;
+
+            case 3:
+              concatenated_supermers.back() |= ((c & 0x03) << 6);
+              current_char = 0;
+              send_count++;
+              break;
+            
+            default:
+              std::cout << "Error: in encoding supermers" << std::endl;
+              break;
+            }
+          }
+          while(bin_elements_remaining == 0 && bin_index < send_counts_for_supermer_lengths.size()-1) {
+            send_counts.push_back(send_count);
+            send_count = 0;
+            current_char = 0;
+            bin_index++;
+            bin_elements_remaining = send_counts_for_supermer_lengths[bin_index];
+          }          
+          // send_count += supermer_length;
           bin_elements_remaining--;
         } 
         send_counts.push_back(send_count);
@@ -949,6 +1017,56 @@ namespace imxx
         }
 
     }
+
+    // function to deserialize supermers as above but from 2 bits per character encoding
+    // TODO: take care of padding in last char of last supermer from each rank
+    template <typename SUPERMER_TYPE, typename SIZE_TYPE>
+    void unserialize_supermers_2bit(const SUPERMER_TYPE & concatenated_supermers,
+      std::vector<SIZE_TYPE> & supermer_lengths, 
+      std::vector<SUPERMER_TYPE> & output) {
+
+        if(concatenated_supermers.empty()) {
+          return;
+        }
+        
+        // extract supermers from concatenated supermers using supermer_lengths
+        SIZE_TYPE index = 0;
+        unsigned char current_char = 0;
+        // auto it = concatenated_supermers.begin();
+        for(auto supermer_length : supermer_lengths) {
+          output.push_back(SUPERMER_TYPE());
+          for(SIZE_TYPE i = 0; i < supermer_length; i++) {
+            switch (current_char)
+            {
+            case 0:
+              output.back().push_back(concatenated_supermers[index] & 0x03);
+              current_char++;
+              break;
+
+            case 1:
+              output.back().push_back((concatenated_supermers[index] >> 2) & 0x03);
+              current_char++;
+              break;
+
+            case 2:
+              output.back().push_back((concatenated_supermers[index] >> 4) & 0x03);
+              current_char++;
+              break;
+
+            case 3:
+              output.back().push_back((concatenated_supermers[index] >> 6) & 0x03);
+              current_char = 0;
+              index++;
+              break;
+            
+            default:
+              std::cout << "Error: in decoding supermers" << std::endl;
+              break;
+            }
+          }
+        }
+
+    } 
 
   } // local namespace
 
@@ -1329,7 +1447,7 @@ namespace imxx
 
     BL_BENCH_START(distribute);
     //function to transform input into a 1d vector of supermers appended consecutively keeping track of offsets of each supermer in supermer_lengths and update send_counts so that it contains the no: characters (need not be char) to be sent each process and send_counts_for_supermer_lengths contains the no: of supermers to be sent to each process
-    imxx::local::serialize_supermers<V, SIZE>(input, concatenated_supermers_to_be_sent, supermer_lengths_to_be_sent, send_counts, send_counts_for_supermer_lengths);
+    imxx::local::serialize_supermers_2bit<V, SIZE>(input, concatenated_supermers_to_be_sent, supermer_lengths_to_be_sent, send_counts, send_counts_for_supermer_lengths);
     BL_BENCH_COLLECTIVE_END(distribute, "serialize", concatenated_supermers_to_be_sent.size(), _comm);
 
     // // printing for debugging----------------------------------------------
@@ -1339,21 +1457,43 @@ namespace imxx
     //   if(i == _comm.rank()) {
     //     std::cout << "rank: " << i << endl;
     //     std::cout << "input size new: " << input.size() << std::endl;
-    //     // std::cout << "input: ";
-    //     // for(auto x : input) std::cout << x << " ";
+    //     std::cout << "input: ";
+    //     for(auto t : input) {
+    //       for(auto x : std::get<1>(t)) {
+    //         if(x == 0)
+    //           std::cout << "A";
+    //         else if(x == 1)
+    //           std::cout << "C";
+    //         else if(x == 2)
+    //           std::cout << "G";
+    //         else if(x == 3)
+    //           std::cout << "T";
+    //         else
+    //           std::cout << "N";
+    //       }
+    //     }
     //     std::cout << endl;
     //     std::cout << "concatenated_supermers_to_be_sent: ";
     //     for(auto c : concatenated_supermers_to_be_sent) {
-    //       if(c == 0) 
-    //         std::cout << "A";
-    //       else if(c == 1)
-    //         std::cout << "C";
-    //       else if(c == 2)
-    //         std::cout << "G";
-    //       else if(c == 3)
-    //         std::cout << "T";
-    //       else
-    //         std::cout << "N";
+    //       // if(c == 0) 
+    //       //   std::cout << "A";
+    //       // else if(c == 1)
+    //       //   std::cout << "C";
+    //       // else if(c == 2)
+    //       //   std::cout << "G";
+    //       // else if(c == 3)
+    //       //   std::cout << "T";
+    //       // else
+    //       //   std::cout << "N";
+          
+    //       // print binary representation of c
+    //       for(int i = 0; i < 8; i++) {
+    //         if(c & (1 << i))
+    //           std::cout << "1";
+    //         else
+    //           std::cout << "0";
+    //       }
+    //       std::cout << " ";
     //     } 
     //     std::cout << endl;
     //     std::cout << "supermer_lengths_to_be_sent: ";
@@ -1486,7 +1626,7 @@ namespace imxx
 
     BL_BENCH_START(distribute);
     // unpack concatenated_supermers into supermers and using supermer_lengths
-    imxx::local::unserialize_supermers<supermer_type, SIZE> (concatenated_supermers, supermer_lengths, supermers);
+    imxx::local::unserialize_supermers_2bit<supermer_type, SIZE> (concatenated_supermers, supermer_lengths, supermers);
     BL_BENCH_COLLECTIVE_END(distribute, "unserialize", supermers.size(), _comm);
     // // printing for debugging----------------------------------------------
     // // print the vectors supermer_lengths and supermers to check if they are correct
