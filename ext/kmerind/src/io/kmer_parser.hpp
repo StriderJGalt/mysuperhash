@@ -67,6 +67,9 @@
 #include "index/quality_score_iterator.hpp"
 #include "containers/fsc_container_utils.hpp"
 
+#include <boost/container/devector.hpp>
+#include <boost/circular_buffer.hpp>
+
 namespace bliss
 {
 namespace index
@@ -375,9 +378,13 @@ class SupermerTupleParser {
       MinimizerType minimizer = *mmer_begin;
       int minimizer_index = 0;
       auto mmer_iter = mmer_begin;
-      deque<Alphabet> supermer;
+      // deque<Alphabet> supermer;
+      boost::container::devector<Alphabet> supermer;
+      // boost::circular_buffer<Alphabet> supermer(window_size*10); //To Do: hardcoded value, need to change later
       // deque<char> supermer; // for testing purposes so that i can print in TupleToRank
-      std::deque<std::pair<MinimizerType, size_t>> mmer_pair_queue;
+      // std::deque<std::pair<MinimizerType, size_t>> mmer_pair_queue;
+      boost::devector<std::pair<MinimizerType, size_t>> mmer_pair_queue;
+      // boost::circular_buffer<std::pair<MinimizerType, size_t>> mmer_pair_queue(window_size-minimizer_size+1);
       
       // update queue for first kmer
       for(int i = 0; i < window_size - minimizer_size + 1; ++i) {

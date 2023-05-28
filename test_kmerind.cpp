@@ -13,8 +13,8 @@ const int K_value = 28;
 const int M_value = 9;
 
 // string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_12.fastq";
-string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_100000.fastq";
-// string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005.fastq";
+// string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_100000.fastq";
+string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005.fastq";
 //string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/merged.fastq";
 
 
@@ -33,6 +33,7 @@ typedef bliss::common::alphabet::DNA_T<> alph;
 
 typedef bliss::common::Kmer<K_value, alph> KmerType;
 typedef bliss::common::Kmer<M_value, alph> MinimizerType; //sample lexicographic minimizer class for testing
+// typedef std::array<char, M_value> MinimizerType; //sample char based lexicographic minimizer class for testing
 typedef vector<char> SupermerType;
 
 // using MapType = dsc::counting_unordered_map<KmerType, long unsigned int, map_parm>;
@@ -136,7 +137,7 @@ int main(int argc, char** argv)
 
     //KmerIndex creation
     kmer_index first(comm);
-    first.build_mpiio<fastq_paser, seq_iter>(test_file_name, comm);
+    first.build_posix<fastq_paser, seq_iter>(test_file_name, comm);
     
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Time taken for building index : " << std::chrono::duration<double>(end-begin).count() << std::endl;
