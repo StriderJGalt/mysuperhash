@@ -299,6 +299,101 @@ public:
 template <typename KmerType>
 constexpr size_t KmerParser<KmerType>::window_size;
 
+// my implementation of minimizer queue as a circular queue with std Array of pairs as underlying storage.
+template <typename MinimizerType, typename PositionType, size_t Capacity>
+class MinimizerQueue {
+  public:
+    using minimizer_type = MinimizerType;
+    using position_type = PositionType;
+    using value_type = ::std::pair<minimizer_type, position_type>;
+    // using array_type = ::std::array<value_type, Capacity>;
+    using array_type = value_type[Capacity]; // giving errors
+    // using size_type = typename array_type::size_type;
+    // using difference_type = typename array_type::difference_type;
+    // using reference = typename array_type::reference;
+    // using const_reference = typename array_type::const_reference;
+    // using pointer = typename array_type::pointer;
+    // using const_pointer = typename array_type::const_pointer;
+    // using iterator = typename array_type::iterator;
+    // using const_iterator = typename array_type::const_iterator;
+    // using reverse_iterator = typename array_type::reverse_iterator;
+    // using const_reverse_iterator = typename array_type::const_reverse_iterator;
+
+  protected:
+    array_type data;
+    size_t head;
+    size_t tail;
+    size_t count;
+
+  public:
+    MinimizerQueue() : head(-1), tail(0), count(0) {}
+
+    // MinimizerQueue(MinimizerQueue const & other) : data(other.data), head(other.head), tail(other.tail), count(other.count) {}
+
+    // MinimizerQueue(MinimizerQueue && other) : data(std::move(other.data)), head(other.head), tail(other.tail), count(other.count) {}
+
+    // MinimizerQueue & operator=(MinimizerQueue const & other) {
+    //   data = other.data;
+    //   head = other.head;
+    //   tail = other.tail;
+    //   count = other.count;
+    //   return *this;
+    // }
+
+    // MinimizerQueue & operator=(MinimizerQueue && other) {
+    //   data = std::move(other.data);
+    //   head = other.head;
+    //   tail = other.tail;
+    //   count = other.count;
+    //   return *this;
+    // }
+
+    inline bool empty() const {
+      return count == 0;
+    }
+
+    inline void push_back(value_type const & val) {
+      // if(count == Capacity) {
+      //   std::cout << head << " " << tail << " " << count << std::endl; // for testing
+      //   throw std::out_of_range("MinimizerQueue::push: queue is full");
+      // }
+      count++;
+      head = (head+1)%Capacity;
+      data[head] = val;
+    }
+
+    inline void pop_front() {
+      // if (count == 0) {
+      //   throw std::out_of_range("MinimizerQueue::pop: queue is empty");
+      // }
+      count--;
+      tail = (tail + 1) % Capacity;
+    }
+
+    inline void pop_back() {
+      // if (count == 0) {
+      //   throw std::out_of_range("MinimizerQueue::pop: queue is empty");
+      // }
+      count--;
+      head = (head == 0) ? Capacity-1 : (head - 1);
+    }
+    // value_type const & front() const {
+    //   return data[head];
+    // }
+
+    inline value_type & front() {
+      return data[tail];
+    }
+
+    // value_type const & back() const {
+    //   return data[tail];
+    // }
+
+    inline value_type & back() {
+      return data[head];
+    }
+};
+
 
 // create a supermer parser class similar to KmerParser to be used for supermers, which are not kmers, but are a concatenation of kmers.
 // This class will iterate over tuples of minimizer and supermer in a sequence.
@@ -378,13 +473,14 @@ class SupermerTupleParser {
       MinimizerType minimizer = *mmer_begin;
       int minimizer_index = 0;
       auto mmer_iter = mmer_begin;
-      // deque<Alphabet> supermer;
-      boost::container::devector<Alphabet> supermer;
+      deque<Alphabet> supermer;
+      // boost::container::devector<Alphabet> supermer;
       // boost::circular_buffer<Alphabet> supermer(window_size*10); //To Do: hardcoded value, need to change later
       // deque<char> supermer; // for testing purposes so that i can print in TupleToRank
       // std::deque<std::pair<MinimizerType, size_t>> mmer_pair_queue;
-      boost::devector<std::pair<MinimizerType, size_t>> mmer_pair_queue;
+      // boost::container::devector<std::pair<MinimizerType, size_t>> mmer_pair_queue;
       // boost::circular_buffer<std::pair<MinimizerType, size_t>> mmer_pair_queue(window_size-minimizer_size+1);
+      MinimizerQueue<MinimizerType, size_t, window_size-minimizer_size+1> mmer_pair_queue;
       
       // update queue for first kmer
       for(int i = 0; i < window_size - minimizer_size + 1; ++i) {

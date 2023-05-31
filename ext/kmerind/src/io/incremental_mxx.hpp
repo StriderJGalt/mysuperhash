@@ -1035,34 +1035,43 @@ namespace imxx
         // auto it = concatenated_supermers.begin();
         for(auto supermer_length : supermer_lengths) {
           output.push_back(SUPERMER_TYPE());
-          for(SIZE_TYPE i = 0; i < supermer_length; i++) {
-            switch (current_char)
-            {
-            case 0:
-              output.back().push_back(concatenated_supermers[index] & 0x03);
-              current_char++;
-              break;
+          // for(SIZE_TYPE i = 0; i < supermer_length; i++) {
+          for(SIZE_TYPE i = 0; i < supermer_length; i+=4) {
+            auto c = concatenated_supermers[index++];
+            output.back().push_back(c & 0x03);
+            output.back().push_back((c >> 2) & 0x03);
+            output.back().push_back((c >> 4) & 0x03);
+            output.back().push_back((c >> 6) & 0x03);
+            // switch (current_char)
+            // {
+            // case 0:
+            //   output.back().push_back(concatenated_supermers[index] & 0x03);
+            //   current_char++;
+            //   break;
 
-            case 1:
-              output.back().push_back((concatenated_supermers[index] >> 2) & 0x03);
-              current_char++;
-              break;
+            // case 1:
+            //   output.back().push_back((concatenated_supermers[index] >> 2) & 0x03);
+            //   current_char++;
+            //   break;
 
-            case 2:
-              output.back().push_back((concatenated_supermers[index] >> 4) & 0x03);
-              current_char++;
-              break;
+            // case 2:
+            //   output.back().push_back((concatenated_supermers[index] >> 4) & 0x03);
+            //   current_char++;
+            //   break;
 
-            case 3:
-              output.back().push_back((concatenated_supermers[index] >> 6) & 0x03);
-              current_char = 0;
-              index++;
-              break;
+            // case 3:
+            //   output.back().push_back((concatenated_supermers[index] >> 6) & 0x03);
+            //   current_char = 0;
+            //   index++;
+            //   break;
             
-            default:
-              std::cout << "Error: in decoding supermers" << std::endl;
-              break;
-            }
+            // default:
+            //   std::cout << "Error: in decoding supermers" << std::endl;
+            //   break;
+            // }
+          }
+          for(SIZE_TYPE i = 0; i < (4-(supermer_length % 4))%4; i++) {
+            output.back().pop_back();
           }
         }
 
