@@ -1887,7 +1887,231 @@ namespace dsc  // distributed std container
   };
 
   // supermer_based_counting_unordered_map similar to counting_unordered_map, but gets input as tuples of {minimizer, supermer} and used only minimizer as key for distribution and then extracts kmers from supermer before local insertion
-  template<typename TupleType, typename Key, typename T,
+  // template<typename TupleType, typename Key, typename T,
+  // template <typename> class MapParams,
+  // class Alloc = ::std::allocator< ::std::pair<const Key, T> >
+  // >
+  // class minimizer_based_counting_unordered_map : public reduction_unordered_map<Key, T, MapParams, ::std::plus<T>, Alloc> {
+  //     static_assert(::std::is_integral<T>::value, "count type has to be integral");
+
+  //   protected:
+  //     using Base = reduction_unordered_map<Key, T, MapParams, ::std::plus<T>, Alloc>;
+      
+  //     // set minimizser_type as type of first element of TupleType 
+  //     using minimizer_type = typename ::std::tuple_element<0, TupleType>::type;
+  //     // set supermer_type as type of second element of TupleType
+  //     using supermer_type = typename ::std::tuple_element<1, TupleType>::type;
+
+      
+  //     struct TupleToRank {
+  //         // typename Base::DistTransformedFunc proc_trans_hash;
+  //         using dist_func = typename ::bliss::kmer::hash::murmur<minimizer_type>;
+  //         using trans_func = typename ::bliss::transform::extract_first<TupleType>;
+  //         // using proc_trans_hash = typename ::fsc::TransformedHash<minimizer_type, dist_func, trans_func>;   
+
+  //         dist_func h;
+  //         trans_func t;                                                     
+  //         const int p;
+
+  //         // 2x comm size to allow more even distribution?
+  //         TupleToRank(int comm_size) :
+  //       			  p(comm_size), h(ceilLog2(comm_size)), t() {};
+  //       	  // proc_trans_hash(typename dist_func(ceilLog2(comm_size)),
+  //       		// 	  	  	  typename trans_func()),
+
+  //         inline int operator()(TupleType const & x) const {
+  //           // std::cout << "KeyToRank operator. commsize " << p << std::endl;
+  //           // std::cout << "supermer ";
+  //           // for(char c : std::get<1>(x)) {
+  //           //   if(c == 0) 
+  //           //     std::cout << "A";
+  //           //   else if(c == 1)
+  //           //     std::cout << "C";
+  //           //   else if(c == 2)
+  //           //     std::cout << "G";
+  //           //   else if(c == 3)
+  //           //     std::cout << "T";
+  //           //   else
+  //           //     std::cout << "N";
+  //           // }
+  //           // std::cout << std::endl;
+  //           // std::cout << " key " << t(x) << " hashed to " << h(t(x)) << ", mapped to proc " << h(t(x)) % p << std::endl;
+
+  //           return h(t(x)) % p;
+  //         }
+  //         // template<typename V>
+  //         // inline int operator()(::std::pair<Key, V> const & x) const {
+  //         //   return this->operator()(x.first);
+  //         // }
+  //         // template<typename V>
+  //         // inline int operator()(::std::pair<const Key, V> const & x) const {
+  //         //   return this->operator()(x.first);
+  //         // }
+  //     } tuple_to_rank;
+
+  //   public:
+  //     using local_container_type = typename Base::local_container_type;
+
+  //     // std::unordered_multimap public members.
+  //     using key_type              = typename local_container_type::key_type;
+  //     using mapped_type           = typename local_container_type::mapped_type;
+  //     using value_type            = typename local_container_type::value_type;
+  //     using hasher                = typename local_container_type::hasher;
+  //     using key_equal             = typename local_container_type::key_equal;
+  //     using allocator_type        = typename local_container_type::allocator_type;
+  //     using reference             = typename local_container_type::reference;
+  //     using const_reference       = typename local_container_type::const_reference;
+  //     using pointer               = typename local_container_type::pointer;
+  //     using const_pointer         = typename local_container_type::const_pointer;
+  //     using iterator              = typename local_container_type::iterator;
+  //     using const_iterator        = typename local_container_type::const_iterator;
+  //     using size_type             = typename local_container_type::size_type;
+  //     using difference_type       = typename local_container_type::difference_type;
+
+
+  //     static constexpr size_t kmer_size = Key::size;
+
+  //     minimizer_based_counting_unordered_map(const mxx::comm& _comm) : Base(_comm), tuple_to_rank(_comm.size()) {}
+
+  //     virtual ~minimizer_based_counting_unordered_map() {};
+
+  //     using Base::insert;
+  //     using Base::count;
+  //     using Base::find;
+  //     using Base::erase;
+  //     using Base::unique_size;
+
+  //     /**
+  //      * @brief insert new elements in the distributed unordered_multimap.
+  //      * @param first
+  //      * @param last
+  //      */
+  //     template <typename Predicate = ::bliss::filter::TruePredicate>
+  //     size_t insert(std::vector< TupleType >& input, bool sorted_input = false, Predicate const &pred = Predicate()) {
+  //       // even if count is 0, still need to participate in mpi calls.  if (input.size() == 0) return;
+  //       BL_BENCH_INIT(insert);
+
+  //       if (::dsc::empty(input, this->comm)) {
+  //         BL_BENCH_REPORT_MPI_NAMED(insert, "count_hashmap:insert", this->comm);
+  //         return 0;
+  //       }
+
+
+  //       // transform input first.
+  //       // BL_BENCH_START(insert);
+  //       // this->transform_input(input);
+  //       // BL_BENCH_END(insert, "transform_input", input.size());
+
+  //       // then send the raw k-mers.
+  //       // communication part
+  //       std::vector< supermer_type > output;
+  //       size_t total_no_kmers = 0;
+  //       if (this->comm.size() > 1) {
+  //         BL_BENCH_START(insert);
+  //         // first remove duplicates.  sort, then get unique, finally remove the rest.  may not be needed
+  //         std::vector<size_t> recv_counts;
+  //         std::vector<size_t> i2o;
+  //         // std::vector< TupleType > buffer;
+  //         // ::imxx::distribute<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, buffer, this->comm);
+  //         // input.swap(buffer);
+  //         ::imxx::distribute_supermers<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, kmer_size, total_no_kmers, output, this->comm);
+  //         BL_BENCH_END(insert, "dist_data", input.size());
+  //       }
+
+  //         // print total number of kmers for each rank
+  //         // std::cout << "rank " << this->comm.rank() << " total_no_kmers " << total_no_kmers << std::endl;
+
+
+  //         BL_BENCH_START(insert);
+  //         vector< Key > kmers;
+  //         size_t count = 0;
+  //         size_t before = this->c.size();
+
+  //         this->local_reserve(total_no_kmers);
+
+  //         // extract kmers from supermers
+  //         for (auto const & supermer : output) {
+  //           // print supermer for debuggings
+  //           // std::cout << "supermer: ";
+  //           // for (auto const & c : supermer) {
+  //           //   if (c == 0) {
+  //           //     std::cout << "A";
+  //           //   } else if (c == 1) {
+  //           //     std::cout << "C";
+  //           //   } else if (c == 2) {
+  //           //     std::cout << "G";
+  //           //   } else if (c == 3) {
+  //           //     std::cout << "T";
+  //           //   } else {
+  //           //     std::cout << "N";
+  //           //   }
+  //           // }
+  //           // std::cout << std::endl;
+
+  //           if(supermer.size() >= kmer_size) {
+  //             for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e) {
+  //               kmers.emplace_back(it_b, it_e);
+  //             }
+  //           }
+
+  //           // for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e, count++) {
+  //           //   Key kmer(it_b);
+  //           //   if(this->c.find(kmer) == this->c.end()) {
+  //           //     this->c.emplace(kmer, T(1));
+  //           //   } else {
+  //           //     // this->c[kmer]++;
+  //           //     this->c.at(kmer) == this->r(this->c.at(kmer), T(1));
+  //           //   }
+  //           // }
+          
+  //         }
+
+  //         if(this->c.size()!=before) {
+  //           this->local_changed = true;
+  //         }
+  //         BL_BENCH_END(insert, "extract_kmers", count);
+
+  //         // size_t count = 0;
+  //         auto trans = [](Key const & x) {
+  //           return ::std::make_pair(x, T(1));
+  //         };
+
+  //         BL_BENCH_START(insert);
+  //         // preallocate.  easy way out - estimate to be 1/2 of input.  then at the end, resize if significantly less.
+  //         //this->c.resize(input.size() / 2);
+  //         if (this->comm.rank() == 0)
+  //         std::cout << "rank " << this->comm.rank() <<
+  //           " BEFORE input=" << input.size() << " size=" << this->local_size() << " buckets=" << this->c.bucket_count() << std::endl;
+
+  //         // then insert all the rest,
+  //         auto local_start = ::bliss::iterator::make_transform_iterator(kmers.begin(), trans);
+  //         auto local_end = ::bliss::iterator::make_transform_iterator(kmers.end(), trans);
+  //         // insert
+  //         if (!::std::is_same<Predicate, ::bliss::filter::TruePredicate>::value)
+  //           count += this->Base::local_insert(local_start, local_end, pred);
+  //         else
+  //           count += this->Base::local_insert(local_start, local_end);
+  //       BL_BENCH_END(insert, "local_insert", this->local_size());
+
+
+  //       BL_BENCH_REPORT_MPI_NAMED(insert, "count_hashmap:insert_key", this->comm);
+
+  //       // if(count != total_no_kmers) {
+  //       //   std::cout << "count != total_no_kmers" << std::endl;
+  //       // }
+  //       return count;
+
+  //     }
+  
+  //     // // dummy insert for testing
+  //     // size_t insert(std::vector< TupleType >& input, bool sorted_input = false) {
+  //     //   size_t count = 0;
+  //     //   return count;
+  //     // }
+  // };
+
+  // supermer_based_counting_unordered_map similar to counting_unordered_map, but gets input as tuples of {minimizer, supermer} and used only minimizer as key for distribution and then extracts kmers from supermer before local insertion
+  template<typename MinimizerKmerLoadMapType, typename TupleType, typename Key, typename T,
   template <typename> class MapParams,
   class Alloc = ::std::allocator< ::std::pair<const Key, T> >
   >
@@ -1987,7 +2211,7 @@ namespace dsc  // distributed std container
        * @param last
        */
       template <typename Predicate = ::bliss::filter::TruePredicate>
-      size_t insert(std::vector< TupleType >& input, bool sorted_input = false, Predicate const &pred = Predicate()) {
+      size_t insert(std::vector< TupleType >& input, MinimizerKmerLoadMapType &minimizer_kmer_load_map, bool sorted_input = false, Predicate const &pred = Predicate()) {
         // even if count is 0, still need to participate in mpi calls.  if (input.size() == 0) return;
         BL_BENCH_INIT(insert);
 
@@ -1996,6 +2220,104 @@ namespace dsc  // distributed std container
           return 0;
         }
 
+        // performa all reduction on minimizer kmer load map
+        BL_BENCH_START(insert);
+        ::imxx::all_reduce_minimizer_kmer_load_map(minimizer_kmer_load_map, this->comm);
+        BL_BENCH_END(insert, "reduce_minimizer_kmer_load_map", minimizer_kmer_load_map.size());
+
+        // print out first 100 elements of minimizer kmer load map for testing
+        // if(this->comm.rank() == 0) {
+        //     // print minimizer kmer load map
+        //   std::cout << "Minimizer kmer load after reduction" << std::endl;
+        //   for(int i=0; i<100 && i<minimizer_kmer_load_map.size(); i++) {
+        //   std::cout << i << ":" << minimizer_kmer_load_map[i] << ", ";
+        //   }
+        //   for(int i=1; i<100 && i<minimizer_kmer_load_map.size(); i++) {
+        //   std::cout << 262144-i << ":" << minimizer_kmer_load_map[262144-i] << ", ";
+        //   }
+        //   std::cout << std::endl;
+        // }
+
+        // perform greedy binning of minimizers to ranks using minimizer_kmer_load_map so that each rank has roughly the same kmer load
+        BL_BENCH_START(insert);
+        // find reverse sorted order of indices of minimizer_kmer_load_map
+        std::vector<size_t> sorted_minimizer_kmer_load_map_indices(minimizer_kmer_load_map.size());
+        std::iota(sorted_minimizer_kmer_load_map_indices.begin(), sorted_minimizer_kmer_load_map_indices.end(), 0);
+        std::sort(sorted_minimizer_kmer_load_map_indices.begin(), sorted_minimizer_kmer_load_map_indices.end(), [&minimizer_kmer_load_map](size_t i1, size_t i2) { return minimizer_kmer_load_map[i1] > minimizer_kmer_load_map[i2]; });
+
+        // print out first and last 100 elements of sorted_minimizer_kmer_load_map_indices for testing
+        // if(this->comm.rank() == 0) {
+        //   std::cout << "sorted_minimizer_kmer_load_map_indices" << std::endl;
+        //   for(int i=0; i<100 && i<sorted_minimizer_kmer_load_map_indices.size(); i++) {
+        //   std::cout << i << ":" << sorted_minimizer_kmer_load_map_indices[i] << ", ";
+        //   }
+        //   for(int i=1; i<100 && i<sorted_minimizer_kmer_load_map_indices.size(); i++) {
+        //   std::cout << 262144-i << ":" << sorted_minimizer_kmer_load_map_indices[262144-i] << ", ";
+        //   }
+        //   std::cout << std::endl;
+        // }
+
+        // assign ranks to minimizers in order of sorted_minimizer_kmer_load_map_indices such the assigned rank is the one with the current lowest load
+        std::vector<size_t> rank_load(this->comm.size(), 0);
+        std::vector<size_t> minimizer_rank(minimizer_kmer_load_map.size());
+        for(size_t i=0; i<sorted_minimizer_kmer_load_map_indices.size(); i++) {
+          size_t minimizer = sorted_minimizer_kmer_load_map_indices[i];
+          size_t min_load = rank_load[0];
+          size_t min_rank = 0;
+          for(size_t j=1; j<this->comm.size(); j++) {
+            if(rank_load[j] < min_load) {
+              min_load = rank_load[j];
+              min_rank = j;
+            }
+          }
+          minimizer_rank[minimizer] = min_rank;
+          rank_load[min_rank] += minimizer_kmer_load_map[minimizer];
+        }
+
+        // // print out first and last 100 elements of minimizer_rank for testing
+        // if(this->comm.rank() == 0) {
+        //   std::cout << "minimizer_rank" << std::endl;
+        //   for(int i=0; i<100 && i<minimizer_rank.size(); i++) {
+        //   std::cout << i << ":" << minimizer_rank[i] << ", ";
+        //   }
+        //   for(int i=1; i<100 && i<minimizer_rank.size(); i++) {
+        //   std::cout << 262144-i << ":" << minimizer_rank[262144-i] << ", ";
+        //   }
+        //   std::cout << std::endl;
+        // }
+        // print elements of rank_load for testing
+        if(this->comm.rank() == 0) {
+          std::cout << "rank_load" << std::endl;
+          for(int i=0; i<rank_load.size(); i++) {
+          std::cout << i << ":" << rank_load[i] << ", ";
+          }
+          std::cout << std::endl;
+        }
+
+        // tuple to rank using minimizer_rank
+        struct TupleToRank2 {
+          // typename Base::DistTransformedFunc proc_trans_hash;
+          // using dist_func = typename ::bliss::kmer::hash::murmur<minimizer_type>;
+          using trans_func = typename ::bliss::transform::extract_first<TupleType>;
+          // using proc_trans_hash = typename ::fsc::TransformedHash<minimizer_type, dist_func, trans_func>;   
+
+          // dist_func h;
+          trans_func t;                                                     
+          const int p;
+          vector<size_t> minimizer_rank;
+
+          // 2x comm size to allow more even distribution?
+          TupleToRank2(vector<size_t> min_rank, int comm_size) :
+        			  p(comm_size), minimizer_rank(min_rank), t() {};
+        	  // proc_trans_hash(typename dist_func(ceilLog2(comm_size)),
+        		// 	  	  	  typename trans_func()),
+
+          inline int operator()(TupleType const & x) const {
+            return minimizer_rank[t(x).getPrefix()];
+          }
+        } tuple_to_rank2(minimizer_rank, this->comm.size());
+
+        BL_BENCH_END(insert, "greedy_binning", sorted_minimizer_kmer_load_map_indices.size());
 
         // transform input first.
         // BL_BENCH_START(insert);
@@ -2014,13 +2336,17 @@ namespace dsc  // distributed std container
           // std::vector< TupleType > buffer;
           // ::imxx::distribute<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, buffer, this->comm);
           // input.swap(buffer);
-          ::imxx::distribute_supermers<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, kmer_size, total_no_kmers, output, this->comm);
+          // ::imxx::distribute_supermers<TupleType, TupleToRank, size_t>(input, this->tuple_to_rank, recv_counts, i2o, kmer_size, total_no_kmers, output, this->comm);
+          ::imxx::distribute_supermers<TupleType, TupleToRank2, size_t>(input, tuple_to_rank2, recv_counts, i2o, kmer_size, total_no_kmers, output, this->comm);
           BL_BENCH_END(insert, "dist_data", input.size());
         }
 
+          // print total number of kmers for each rank
+          // std::cout << "rank " << this->comm.rank() << " total_no_kmers " << total_no_kmers << std::endl;
+
 
           BL_BENCH_START(insert);
-          // vector< Key > kmers;
+          vector< Key > kmers;
           size_t count = 0;
           size_t before = this->c.size();
 
@@ -2045,21 +2371,21 @@ namespace dsc  // distributed std container
             // }
             // std::cout << std::endl;
 
-            // if(supermer.size() >= kmer_size) {
-            //   for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e) {
-            //     kmers.emplace_back(it_b, it_e);
-            //   }
-            // }
-
-            for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e, count++) {
-              Key kmer(it_b);
-              if(this->c.find(kmer) == this->c.end()) {
-                this->c.emplace(kmer, T(1));
-              } else {
-                // this->c[kmer]++;
-                this->c.at(kmer) == this->r(this->c.at(kmer), T(1));
+            if(supermer.size() >= kmer_size) {
+              for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e) {
+                kmers.emplace_back(it_b, it_e);
               }
             }
+
+            // for(auto it_b = supermer.begin(), it_e = it_b+kmer_size; it_b!=supermer.end() - kmer_size + 1; ++it_b, ++it_e, count++) {
+            //   Key kmer(it_b);
+            //   if(this->c.find(kmer) == this->c.end()) {
+            //     this->c.emplace(kmer, T(1));
+            //   } else {
+            //     // this->c[kmer]++;
+            //     this->c.at(kmer) == this->r(this->c.at(kmer), T(1));
+            //   }
+            // }
           
           }
 
@@ -2069,33 +2395,33 @@ namespace dsc  // distributed std container
           BL_BENCH_END(insert, "extract_kmers", count);
 
           // size_t count = 0;
-          // auto trans = [](Key const & x) {
-          //   return ::std::make_pair(x, T(1));
-          // };
+          auto trans = [](Key const & x) {
+            return ::std::make_pair(x, T(1));
+          };
 
-        //   BL_BENCH_START(insert);
-        //   // preallocate.  easy way out - estimate to be 1/2 of input.  then at the end, resize if significantly less.
-        //   //this->c.resize(input.size() / 2);
-        //   if (this->comm.rank() == 0)
-        //   std::cout << "rank " << this->comm.rank() <<
-        //     " BEFORE input=" << input.size() << " size=" << this->local_size() << " buckets=" << this->c.bucket_count() << std::endl;
+          BL_BENCH_START(insert);
+          // preallocate.  easy way out - estimate to be 1/2 of input.  then at the end, resize if significantly less.
+          //this->c.resize(input.size() / 2);
+          if (this->comm.rank() == 0)
+          std::cout << "rank " << this->comm.rank() <<
+            " BEFORE input=" << input.size() << " size=" << this->local_size() << " buckets=" << this->c.bucket_count() << std::endl;
 
-        //   // then insert all the rest,
-        //   auto local_start = ::bliss::iterator::make_transform_iterator(kmers.begin(), trans);
-        //   auto local_end = ::bliss::iterator::make_transform_iterator(kmers.end(), trans);
-        //   // insert
-        //   if (!::std::is_same<Predicate, ::bliss::filter::TruePredicate>::value)
-        //     count += this->Base::local_insert(local_start, local_end, pred);
-        //   else
-        //     count += this->Base::local_insert(local_start, local_end);
-        // BL_BENCH_END(insert, "local_insert", this->local_size());
+          // then insert all the rest,
+          auto local_start = ::bliss::iterator::make_transform_iterator(kmers.begin(), trans);
+          auto local_end = ::bliss::iterator::make_transform_iterator(kmers.end(), trans);
+          // insert
+          if (!::std::is_same<Predicate, ::bliss::filter::TruePredicate>::value)
+            count += this->Base::local_insert(local_start, local_end, pred);
+          else
+            count += this->Base::local_insert(local_start, local_end);
+        BL_BENCH_END(insert, "local_insert", this->local_size());
 
 
         BL_BENCH_REPORT_MPI_NAMED(insert, "count_hashmap:insert_key", this->comm);
 
-        if(count != total_no_kmers) {
-          std::cout << "count != total_no_kmers" << std::endl;
-        }
+        // if(count != total_no_kmers) {
+        //   std::cout << "count != total_no_kmers" << std::endl;
+        // }
         return count;
 
       }

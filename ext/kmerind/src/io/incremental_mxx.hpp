@@ -934,7 +934,8 @@ namespace imxx
     template <typename INPUT_TUPLE_TYPE, typename SIZE_TYPE>
     void serialize_supermers_2bit(const std::vector<INPUT_TUPLE_TYPE> & input, 
         typename std::tuple_element<1, INPUT_TUPLE_TYPE>::type & concatenated_supermers,
-        std::vector<SIZE_TYPE> & supermer_lengths, 
+        // std::vector<SIZE_TYPE> & supermer_lengths, 
+        std::vector<uint8_t> & supermer_lengths, 
         std::vector<SIZE_TYPE> & send_counts,
         std::vector<SIZE_TYPE> & send_counts_for_supermer_lengths) {
 
@@ -1022,7 +1023,8 @@ namespace imxx
     // TODO: take care of padding in last char of last supermer from each rank
     template <typename SUPERMER_TYPE, typename SIZE_TYPE>
     void unserialize_supermers_2bit(const SUPERMER_TYPE & concatenated_supermers,
-      std::vector<SIZE_TYPE> & supermer_lengths, 
+      // std::vector<SIZE_TYPE> & supermer_lengths, 
+      std::vector<uint8_t> & supermer_lengths, 
       std::vector<SUPERMER_TYPE> & output) {
 
         if(concatenated_supermers.empty()) {
@@ -1035,44 +1037,45 @@ namespace imxx
         // auto it = concatenated_supermers.begin();
         for(auto supermer_length : supermer_lengths) {
           output.push_back(SUPERMER_TYPE());
+          output.back().reserve(supermer_length);
           // for(SIZE_TYPE i = 0; i < supermer_length; i++) {
           for(SIZE_TYPE i = 0; i < supermer_length; i+=4) {
-            auto c = concatenated_supermers[index++];
-            output.back().push_back(c & 0x03);
-            output.back().push_back((c >> 2) & 0x03);
-            output.back().push_back((c >> 4) & 0x03);
-            output.back().push_back((c >> 6) & 0x03);
-            // switch (current_char)
-            // {
-            // case 0:
-            //   output.back().push_back(concatenated_supermers[index] & 0x03);
-            //   current_char++;
-            //   break;
+            // auto c = concatenated_supermers[index++];
+            // output.back().push_back(c & 0x03);
+            // output.back().push_back((c >> 2) & 0x03);
+            // output.back().push_back((c >> 4) & 0x03);
+            // output.back().push_back((c >> 6) & 0x03);
+            switch (current_char)
+            {
+            case 0:
+              output.back().push_back(concatenated_supermers[index] & 0x03);
+              current_char++;
+              break;
 
-            // case 1:
-            //   output.back().push_back((concatenated_supermers[index] >> 2) & 0x03);
-            //   current_char++;
-            //   break;
+            case 1:
+              output.back().push_back((concatenated_supermers[index] >> 2) & 0x03);
+              current_char++;
+              break;
 
-            // case 2:
-            //   output.back().push_back((concatenated_supermers[index] >> 4) & 0x03);
-            //   current_char++;
-            //   break;
+            case 2:
+              output.back().push_back((concatenated_supermers[index] >> 4) & 0x03);
+              current_char++;
+              break;
 
-            // case 3:
-            //   output.back().push_back((concatenated_supermers[index] >> 6) & 0x03);
-            //   current_char = 0;
-            //   index++;
-            //   break;
+            case 3:
+              output.back().push_back((concatenated_supermers[index] >> 6) & 0x03);
+              current_char = 0;
+              index++;
+              break;
             
-            // default:
-            //   std::cout << "Error: in decoding supermers" << std::endl;
-            //   break;
-            // }
+            default:
+              std::cout << "Error: in decoding supermers" << std::endl;
+              break;
+            }
           }
-          for(SIZE_TYPE i = 0; i < (4-(supermer_length % 4))%4; i++) {
-            output.back().pop_back();
-          }
+          // for(SIZE_TYPE i = 0; i < (4-(supermer_length % 4))%4; i++) {
+          //   output.back().pop_back();
+          // }
         }
 
     } 
@@ -1418,8 +1421,10 @@ namespace imxx
     using supermer_type = typename ::std::tuple_element<1, V>::type;
     supermer_type concatenated_supermers_to_be_sent;
     supermer_type concatenated_supermers;
-    ::std::vector<SIZE> supermer_lengths_to_be_sent;
-    ::std::vector<SIZE> supermer_lengths;
+    // ::std::vector<SIZE> supermer_lengths_to_be_sent;
+    ::std::vector<uint8_t> supermer_lengths_to_be_sent;
+    // ::std::vector<SIZE> supermer_lengths;
+    ::std::vector<uint8_t> supermer_lengths;
     ::std::vector<SIZE> send_counts_for_supermer_lengths((long unsigned int)_comm.size(), 0);
 
     // //print input for debugging----------------------------------------------
@@ -1680,6 +1685,40 @@ namespace imxx
 
   }
 
+
+  // template<typename MinimizerKmerLoadMapType>
+  // void all_reduce_minimizer_kmer_load_map(MinimizerKmerLoadMapType &minimizer_kmer_load_map, ::mxx::comm const &_comm ) {
+  //   MinimizerKmerLoadMapType result = mxx::allreduce(minimizer_kmer_load_map, 
+  //                         [](MinimizerKmerLoadMapType const &x, MinimizerKmerLoadMapType const &y){
+  //                           MinimizerKmerLoadMapType temp{x.size(), 0};
+  //                           // // add all corresponding elements of the two arrays
+  //                           // for(int i=0; i<x.size(); i++) {
+  //                           //   temp[i] = x[i] + y[i];
+  //                           // }
+  //                           std::transform (x.begin(), x.end(), y.begin(), temp.begin(), std::plus<int>());
+  //                           return temp;
+  //                         },
+  //                         _comm); 
+  //   result.swap(minimizer_kmer_load_map);
+  // }
+
+  void all_reduce_minimizer_kmer_load_map(vector<size_t> &minimizer_kmer_load_map, ::mxx::comm const &_comm ) {
+    vector<size_t> result = mxx::allreduce(minimizer_kmer_load_map, 
+                          [](size_t const &x, size_t const &y){
+                            return x + y;
+                          },
+                          // [](vector<size_t> const &x, vector<size_t> const &y){
+                          //   vector<size_t> temp{x.size(), 0};
+                          //   // // add all corresponding elements of the two arrays
+                          //   // for(int i=0; i<x.size(); i++) {
+                          //   //   temp[i] = x[i] + y[i];
+                          //   // }
+                          //   std::transform (x.begin(), x.end(), y.begin(), temp.begin(), std::plus<int>());
+                          //   return temp;
+                          // },
+                          _comm); 
+    result.swap(minimizer_kmer_load_map);
+  }
 
   template <typename V, typename SIZE>
   void undistribute(::std::vector<V> const & input,

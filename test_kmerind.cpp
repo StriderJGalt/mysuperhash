@@ -7,6 +7,7 @@
 #include<omp.h>
 #include "kmerhash/distributed_robinhood_map.hpp"
 #include "kmerhash/distributed_batched_robinhood_map.hpp"
+#include "kmerhash/hybrid_batched_robinhood_map.hpp"
 
 //set K-value and testcase file name
 const int K_value = 28;
@@ -15,7 +16,7 @@ const int M_value = 9;
 // string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_12.fastq";
 // string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005_100000.fastq";
 string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/SRR072005.fastq";
-//string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/merged.fastq";
+// string test_file_name = "/home/adarsh.dharmadevan/datasets/FV/merged.fastq";
 
 
 //----------------Type definations for kmer index-----------------------------------
@@ -38,6 +39,7 @@ typedef vector<char> SupermerType;
 
 // using MapType = dsc::counting_unordered_map<KmerType, long unsigned int, map_parm>;
 // using MapType = dsc::counting_robinhood_map<KmerType, long unsigned int, map_parm>; 
+// using MapType = dsc::counting_batched_robinhood_map<KmerType, long unsigned int, map_parm>;
 using MapType = dsc::minimizer_based_counting_unordered_map< std::tuple<MinimizerType, SupermerType >, KmerType, long unsigned int, map_parm>; 
 
 
@@ -58,17 +60,17 @@ typedef decltype(just[0]) KmerCountPair;
 
 
 //-----------------------Function declarations---------------------------------------
-bool test_for_fastq(std::string file_name, mxx::comm& comm);
+// bool test_for_fastq(std::string file_name, mxx::comm& comm);
 
-bool equal_my(kmerAndCountsVec counts, MykmerAndCountsVec file);
+// bool equal_my(kmerAndCountsVec counts, MykmerAndCountsVec file);
 
-MykmerAndCountsVec read_kmer_counts(std::string file_name);
+// MykmerAndCountsVec read_kmer_counts(std::string file_name);
 
-std::vector<KmerType> get_kmerind_kmers(std::vector<std::string> file_string);
+// std::vector<KmerType> get_kmerind_kmers(std::vector<std::string> file_string);
 
-bool less_than_sort(KmerCountPair i, KmerCountPair j);
+// bool less_than_sort(KmerCountPair i, KmerCountPair j);
 
-bool less_than_lower(KmerCountPair i, MyKmerCountPair j);
+// bool less_than_lower(KmerCountPair i, MyKmerCountPair j);
 
 int getNodeCount(void)
 {
@@ -153,113 +155,113 @@ int main(int argc, char** argv)
 
 
 
-//Function definations
-bool test_for_fastq(std::string file_name, mxx::comm& comm)
-{
-    MykmerAndCountsVec actual_counts = read_kmer_counts(file_name);
-    std::vector<KmerType> kmerind_kmers = get_kmerind_kmers(actual_counts.first);
+// //Function definations
+// bool test_for_fastq(std::string file_name, mxx::comm& comm)
+// {
+//     MykmerAndCountsVec actual_counts = read_kmer_counts(file_name);
+//     std::vector<KmerType> kmerind_kmers = get_kmerind_kmers(actual_counts.first);
 
-    //KmerIndex creation
-    kmer_index first(comm);
-    first.build_mmap<fastq_paser, seq_iter>(file_name, comm);
-    auto counts = first.find(kmerind_kmers);
+//     //KmerIndex creation
+//     kmer_index first(comm);
+//     first.build_mmap<fastq_paser, seq_iter>(file_name, comm);
+//     auto counts = first.find(kmerind_kmers);
     
-    // print counts
-    if(comm.rank() == 0) {
-        std::cout << "counts.size() = " << counts.size() << std::endl;
-        for (auto x : counts) {
-            std::cout << x.first << " -> " << x.second << std::endl;
-        }
-    }
+//     // print counts
+//     if(comm.rank() == 0) {
+//         std::cout << "counts.size() = " << counts.size() << std::endl;
+//         for (auto x : counts) {
+//             std::cout << x.first << " -> " << x.second << std::endl;
+//         }
+//     }
     
-    bool passed = equal_my(counts, actual_counts);
-    return passed;
-}
+//     bool passed = equal_my(counts, actual_counts);
+//     return passed;
+// }
 
 
-bool equal_my(kmerAndCountsVec counts, MykmerAndCountsVec file_data)
-{
-    std::sort(counts.begin(), counts.end(), less_than_sort);
-    std::vector<long unsigned int> file_counts = file_data.second;
-    std::vector<KmerType> file_kmers = get_kmerind_kmers(file_data.first);
+// bool equal_my(kmerAndCountsVec counts, MykmerAndCountsVec file_data)
+// {
+//     std::sort(counts.begin(), counts.end(), less_than_sort);
+//     std::vector<long unsigned int> file_counts = file_data.second;
+//     std::vector<KmerType> file_kmers = get_kmerind_kmers(file_data.first);
 
-    bool equal = true;    
-    bool i_correct = true;
-    for(int i = 0; i < file_counts.size(); i++)
-    {
-        MyKmerCountPair val(file_kmers[i], file_counts[i]);
-        auto loc = std::lower_bound(counts.begin(), counts.end(), val, less_than_lower);
-        if(loc != counts.end())
-        {
-            KmerCountPair match = *loc;
-            if(match.first == file_kmers[i] && match.second == file_counts[i])
-                i_correct = true;
-            else
-                i_correct = false;
-        }
-        else {
-            i_correct = false;
-        }
-
-
-        if(i_correct == false)
-        {
-            equal = false;
-            break;
-        }
-    } 
-
-    return equal;
-}
+//     bool equal = true;    
+//     bool i_correct = true;
+//     for(int i = 0; i < file_counts.size(); i++)
+//     {
+//         MyKmerCountPair val(file_kmers[i], file_counts[i]);
+//         auto loc = std::lower_bound(counts.begin(), counts.end(), val, less_than_lower);
+//         if(loc != counts.end())
+//         {
+//             KmerCountPair match = *loc;
+//             if(match.first == file_kmers[i] && match.second == file_counts[i])
+//                 i_correct = true;
+//             else
+//                 i_correct = false;
+//         }
+//         else {
+//             i_correct = false;
+//         }
 
 
-MykmerAndCountsVec read_kmer_counts(std::string file_name)
-{
-    std::string in_file = file_name + ".counts";
-    std::ifstream file_stream(in_file);
+//         if(i_correct == false)
+//         {
+//             equal = false;
+//             break;
+//         }
+//     } 
+
+//     return equal;
+// }
+
+
+// MykmerAndCountsVec read_kmer_counts(std::string file_name)
+// {
+//     std::string in_file = file_name + ".counts";
+//     std::ifstream file_stream(in_file);
 
     
-    std::vector <std::string> file_kmers;  
-    std::vector <long unsigned int> file_counts;
-    std::string line;
-    while (getline(file_stream, line))
-    {
-        //Where to split
-        int pos = line.find("@");
+//     std::vector <std::string> file_kmers;  
+//     std::vector <long unsigned int> file_counts;
+//     std::string line;
+//     while (getline(file_stream, line))
+//     {
+//         //Where to split
+//         int pos = line.find("@");
 
-        //extracting kmer and number
-        std::string kmer = line.substr(0, pos); // store the substring   
-        line.erase(0, pos + 1);  
+//         //extracting kmer and number
+//         std::string kmer = line.substr(0, pos); // store the substring   
+//         line.erase(0, pos + 1);  
 
-        //adding kmer and number to function
-        file_kmers.push_back(kmer);
-        file_counts.push_back(stoi(line));
-    }
-    if(file_kmers.size() == file_counts.size() == 0)
-        std::cout << "Error in reading count file" << std::endl;
-    return std::make_pair(file_kmers, file_counts);
-}
-
-
-
-std::vector<KmerType> get_kmerind_kmers(std::vector<std::string> file_string)
-{
-    std::vector<KmerType> kmerind_kmers;
-    for(int i = 0; i < file_string.size(); i++)
-    {
-        kmerind_kmers.push_back(KmerType(file_string[i]));
-    }
-    return kmerind_kmers;
-}
+//         //adding kmer and number to function
+//         file_kmers.push_back(kmer);
+//         file_counts.push_back(stoi(line));
+//     }
+//     if(file_kmers.size() == file_counts.size() == 0)
+//         std::cout << "Error in reading count file" << std::endl;
+//     return std::make_pair(file_kmers, file_counts);
+// }
 
 
-bool less_than_sort(KmerCountPair i, KmerCountPair j)
-{
-    return (i.first < j.first);
-}
+
+// std::vector<KmerType> get_kmerind_kmers(std::vector<std::string> file_string)
+// {
+//     std::vector<KmerType> kmerind_kmers;
+//     for(int i = 0; i < file_string.size(); i++)
+//     {
+//         kmerind_kmers.push_back(KmerType(file_string[i]));
+//     }
+//     return kmerind_kmers;
+// }
 
 
-bool less_than_lower(KmerCountPair i, MyKmerCountPair j)
-{
-    return i.first < j.first;
-}
+// bool less_than_sort(KmerCountPair i, KmerCountPair j)
+// {
+//     return (i.first < j.first);
+// }
+
+
+// bool less_than_lower(KmerCountPair i, MyKmerCountPair j)
+// {
+//     return i.first < j.first;
+// }

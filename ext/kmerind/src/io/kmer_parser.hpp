@@ -308,16 +308,6 @@ class MinimizerQueue {
     using value_type = ::std::pair<minimizer_type, position_type>;
     // using array_type = ::std::array<value_type, Capacity>;
     using array_type = value_type[Capacity]; // giving errors
-    // using size_type = typename array_type::size_type;
-    // using difference_type = typename array_type::difference_type;
-    // using reference = typename array_type::reference;
-    // using const_reference = typename array_type::const_reference;
-    // using pointer = typename array_type::pointer;
-    // using const_pointer = typename array_type::const_pointer;
-    // using iterator = typename array_type::iterator;
-    // using const_iterator = typename array_type::const_iterator;
-    // using reverse_iterator = typename array_type::reverse_iterator;
-    // using const_reverse_iterator = typename array_type::const_reverse_iterator;
 
   protected:
     array_type data;
@@ -432,6 +422,10 @@ class SupermerTupleParser {
   ::bliss::partition::range<size_t> valid_range;
 
   public:
+
+  // local map to store number of kmers associated with each minimizer
+  // std::unordered_map<uint16_t, size_t> minimizer_kmer_load_map; //using unsigned 16 bit int to represent minimizer for now
+  // size_t minimizer_kmer_load_map[262144];
 
   SupermerTupleParser(::bliss::partition::range<size_t> const & valid_r) : valid_range(valid_r) {};
 
@@ -549,7 +543,6 @@ class SupermerTupleParser {
         //   std::cout << p.first << "," << p.second << " ";
         // }
         // std::cout << std::endl;
-
         // if the minimizer has changed, store the old minimizer and the supermer in the output_iter
         if(minimizer != mmer_pair_queue.front().first) {
           // std::cout << "minimizer changed" << std::endl; 
@@ -601,6 +594,175 @@ class SupermerTupleParser {
       // insert last minimizer and supermer into output_iter
       output_iter++ = std::make_tuple(minimizer, vector<char> {supermer.begin(), supermer.end()});
 
+            
+    }
+    return output_iter;
+  }
+
+  // with minimizer_kmer_load array updation
+  template <typename SeqType, typename OutputIt, typename MinimizerKmerLoadMapType, typename Predicate = ::bliss::filter::TruePredicate>
+  OutputIt operator()(SeqType const & read, OutputIt output_iter, MinimizerKmerLoadMapType &minimizer_kmer_load_map, Predicate const & pred = Predicate()) {
+
+    static_assert(std::is_same<value_type, typename ::std::iterator_traits<OutputIt>::value_type>::value,
+            "output type and output container value type are not the same");
+
+
+    typename SeqType::IteratorType seq_begin;
+    typename SeqType::IteratorType seq_end;
+    bool has_window = false;
+
+    std::tie(seq_begin, seq_end, has_window) =
+        ::bliss::index::kmer::KmerParser<kmer_type>::get_valid_iterator_range(read, valid_range, window_size);
+
+    bliss::utils::file::NotEOL neol;
+    if (has_window) {
+      auto begin = BaseCharIterator<SeqType>(CharIter<SeqType>(neol, seq_begin, seq_end), bliss::common::ASCII2<Alphabet>());
+      auto end = BaseCharIterator<SeqType>(CharIter<SeqType>(neol, seq_end), bliss::common::ASCII2<Alphabet>());
+      // auto begin = CharIter<SeqType>(neol, seq_begin, seq_end);
+      // auto end = CharIter<SeqType>(neol, seq_end);
+      
+
+      // // get kmer sliding window iterator of minimizer_size and given alphabet from begin and end iterators
+      auto mmer_begin = mmer_iterator_type<SeqType>(begin, true);
+      auto mmer_end = mmer_iterator_type<SeqType>(end, false);
+  
+
+
+      MinimizerType minimizer = *mmer_begin;
+      int minimizer_index = 0;
+      auto mmer_iter = mmer_begin;
+      std::deque<Alphabet> supermer;
+      // boost::container::devector<Alphabet> supermer;
+      std::deque<std::pair<MinimizerType, size_t>> mmer_pair_queue;
+      // MinimizerQueue<MinimizerType, size_t, window_size-minimizer_size+1> mmer_pair_queue;
+      
+      // declare variable to store the current minimizer to insert into minimizer_kmer_load_map
+      uint16_t current_minimizer = 0;      
+
+      // update queue for first kmer
+      for(int i = 0; i < window_size - minimizer_size + 1; ++i) {
+        auto mmer = *(mmer_iter++);
+        // std::cout << mmer << " ";
+        // remove all mmmers from the queue that are greater than the current mmer
+        while((!mmer_pair_queue.empty()) && mmer <= mmer_pair_queue.back().first) {
+          mmer_pair_queue.pop_back();
+        }
+        // add the current mmer to the queue
+        mmer_pair_queue.push_back(make_pair(mmer,i));
+      }
+      minimizer = mmer_pair_queue.front().first;
+      minimizer_index = mmer_pair_queue.front().second;
+
+      // insert first window_size characters into supermer
+      auto char_iter = begin;
+      for(int i = 0; i < window_size; ++i) {
+        supermer.push_back(*(char_iter++));
+      }
+
+      // // print mmer_pair_queue for debugging
+      // std::cout << "mmer_pair_queue: ";
+      // for(auto p : mmer_pair_queue) {
+      //   std::cout << p.first << "," << p.second << " ";
+      // }
+      // std::cout << std::endl;
+      // // print supermer for debugging
+      // std::cout << "supermer: ";
+      // for(auto c : supermer) {
+      //   if(c == 0) {
+      //     std::cout << "A";
+      //   } else if(c == 1) {
+      //     std::cout << "C";
+      //   } else if(c == 2) {
+      //     std::cout << "G";
+      //   } else if(c == 3) {
+      //     std::cout << "T";
+      //   }
+      // }
+      // std::cout << std::endl;
+
+      // iterate through the rest of mmers while adding characters to supermer untill a new minimizer is found
+      // if a new minimizer is found(value of front of queue changes), store the old minimizer and the supermer in the output_iter
+      // before inserting each mmer ensure all mmers in the queue are smaller and remove any mmer from front if they have gone out of window
+      for(int m_i=window_size - minimizer_size + 1, c_i = window_size; (mmer_iter!=mmer_end) && (char_iter!=end); ++m_i, ++c_i) {
+        
+        auto mmer = *(mmer_iter++);
+        
+        // //print mmer, m_i and c_i for debugging
+        // std::cout << m_i << " " << c_i << " " << mmer << std::endl;
+
+        // remove all mmmers from the queue that are greater than the current mmer
+        while((!mmer_pair_queue.empty()) && mmer < mmer_pair_queue.back().first) {
+          mmer_pair_queue.pop_back();
+        }
+        // add the current mmer to the queue
+        mmer_pair_queue.push_back(make_pair(mmer, m_i));
+        // remove all mmmers from the queue that are out of the window
+        while(mmer_pair_queue.front().second <= (c_i-window_size)) { //change to if later
+          mmer_pair_queue.pop_front();
+        }
+        // // print mmer_pair_queue for debugging
+        // std::cout << "mmer_pair_queue: ";
+        // for(auto p : mmer_pair_queue) {
+        //   std::cout << p.first << "," << p.second << " ";
+        // }
+        // std::cout << std::endl;
+        // if the minimizer has changed, store the old minimizer and the supermer in the output_iter
+        if(minimizer != mmer_pair_queue.front().first) {
+          // std::cout << "minimizer changed" << std::endl; 
+          *output_iter = std::make_tuple(minimizer, vector<char> {supermer.begin(), supermer.end()});
+          // // print inserted pair for debugging
+          // std:: cout << "inserted pair = ";
+          // std::cout << "minimizer: " << minimizer << " " << "supermer: ";
+          // for(auto c : supermer) {
+          //   if(c == 0) {
+          //     std::cout << "A";
+          //   } else if(c == 1) {
+          //     std::cout << "C";
+          //   } else if(c == 2) {
+          //     std::cout << "G";
+          //   } else if(c == 3) {
+          //     std::cout << "T";
+          //   }
+          // }
+          // std::cout << std::endl;
+          ++output_iter;
+          
+          // update minimizer_kmer_load_map by adding the number of kmers in the supermer to the minimizer
+          minimizer_kmer_load_map[minimizer.getPrefix()] += (supermer.size() - minimizer_size + 1);
+
+          minimizer = mmer_pair_queue.front().first;
+          // update supermer
+          int supermer_size = supermer.size();
+          // std :: cout << "supermer size: " << supermer_size << " " << "window_size: " << window_size << std::endl;
+          for(int j = 0; j<(supermer_size-window_size+1); ++j) {
+            // std::cout << (supermer_size-window_size+1) << std::endl;
+            // std::cout << "j: " << j << std::endl;
+            supermer.pop_front();
+          }
+        }
+
+        supermer.push_back(*(char_iter++));
+
+        // // print supermer for debugging
+        // std::cout << "supermer: ";
+        // for(auto c : supermer) {
+        //   if(c == 0) {
+        //     std::cout << "A";
+        //   } else if(c == 1) {
+        //     std::cout << "C";
+        //   } else if(c == 2) {
+        //     std::cout << "G";
+        //   } else if(c == 3) {
+        //     std::cout << "T";
+        //   }
+        // }
+        // std::cout << std::endl;
+      }
+      // insert last minimizer and supermer into output_iter
+      output_iter++ = std::make_tuple(minimizer, vector<char> {supermer.begin(), supermer.end()});
+      
+      // update minimizer_kmer_load_map by adding the number of kmers in the supermer to the minimizer
+      minimizer_kmer_load_map[minimizer.getPrefix()] += (supermer.size() - minimizer_size + 1);
             
     }
     return output_iter;

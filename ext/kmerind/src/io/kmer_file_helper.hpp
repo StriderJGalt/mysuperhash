@@ -185,6 +185,94 @@ struct KmerFileHelper {
     return std::make_pair(seqs, result.size() - before);
   }
 
+  template <typename KmerParser, template <typename> class SeqParser, template <typename,  template <typename> class> class SeqIterType, typename MinimizerKmerLoadMapType, typename BlockType>
+  static std::pair<size_t, size_t> read_block_old(BlockType const & partition,
+      SeqParser<typename BlockType::iterator> const &seq_parser,
+      std::vector<typename KmerParser::value_type>& result,
+      MinimizerKmerLoadMapType &minimizer_kmer_load_map) {
+
+    // from FileLoader type, get the block iter type and range type
+    using CharIterType = typename BlockType::const_iterator;
+
+    //using SeqIterType = ::bliss::io::SequencesIterator<CharIterType, SeqParser >;
+
+    //== sequence parser type
+    KmerParser kmer_parser(partition.valid_range_bytes);
+    ::bliss::utils::file::NotEOL not_eol;
+
+    //== process the chunk of data
+
+    //==  and wrap the chunk inside an iterator that emits Reads.
+    SeqIterType<CharIterType, SeqParser> seqs_start(seq_parser, partition.cbegin(), partition.in_mem_cend(), partition.getRange().start);
+    SeqIterType<CharIterType, SeqParser> seqs_end(partition.in_mem_cend());
+
+    ::fsc::back_emplace_iterator<std::vector<typename KmerParser::value_type> > emplace_iter(result);
+
+    size_t before = result.size();
+    size_t seqs = 0;
+
+    //== loop over the reads
+    for (; seqs_start != seqs_end; ++seqs_start)
+    {
+      auto seq = *seqs_start;
+      if (seq.seq_size() == 0) continue;
+      //      std::cout << "** seq: " << (*seqs_start).id.id << ", ";
+      //      ostream_iterator<typename std::iterator_traits<typename SeqType::IteratorType>::value_type> osi(std::cout);
+      //      std::copy((*seqs_start).seq_begin, (*seqs_start).seq_end, osi);
+      //      std::cout << std::endl;
+
+      size_t start_offset = seq.seq_global_offset();
+
+      // if seq data starts outside of valid, then skip
+      if (start_offset >= partition.valid_range_bytes.end) {
+        continue;
+      }
+
+      // check if last.  if yes, and seqParser is a FASTAParser, then inspect and change if needed
+      if (::std::is_same<SeqParser<CharIterType>, ::bliss::io::FASTAParser<CharIterType> >::value) {
+        // if seq data ends in overlap region, then go at most k-1 characters from end of valid range.
+        if ((start_offset + seq.seq_size()) >= partition.valid_range_bytes.end) {
+          // scan for k-1 characters, from the valid range end.
+          auto endd = seq.seq_begin + (partition.valid_range_bytes.end - start_offset);
+          size_t steps = KmerParser::window_size - 1;
+          size_t count = 0;
+
+          // iterate and find the windows size - 1 chars in overlap, starting from valid end.  should be less than current seq end.
+          while ((endd != seq.seq_end) && (count < steps)) {
+            if (not_eol(*endd)) {
+              ++count;
+            }
+
+            ++endd;
+          }
+
+
+          seq.seq_end = endd;
+        }
+      }
+
+      emplace_iter = kmer_parser(seq, emplace_iter, minimizer_kmer_load_map);
+      if ((seq.seq_offset == seq.seq_begin_offset) ||
+          (start_offset >= partition.valid_range_bytes.start)) ++seqs;
+
+      //      std::cout << "Last: pos - kmer " << result.back() << std::endl;
+
+    }
+
+    //std::cout << "number of sequences " << seqs << " number of total entries " << result.size() << " before insertion " << before << std::endl;
+
+    // // print minimizer kmer load map
+    // std::cout << "Minimizer kmer load" << std::endl;
+    // for(int i=0; i<100 && i<minimizer_kmer_load_map.size(); i++) {
+    //   std::cout << i << ":" << minimizer_kmer_load_map[i] << ", ";
+    // }
+    // for(int i=1; i<100 && i<minimizer_kmer_load_map.size(); i++) {
+    //   std::cout << 262144-i << ":" << minimizer_kmer_load_map[262144-i] << ", ";
+    // }
+    // std::cout << std::endl;
+
+    return std::make_pair(seqs, result.size() - before);
+  }
 
   template <typename KmerParser, template <typename> class SeqParser, template <typename,  template <typename> class> class SeqIterType, typename BlockType>
   static std::pair<size_t, size_t> read_block(BlockType const & partition,
@@ -434,7 +522,6 @@ struct KmerFileHelper {
 
 
 #if defined(USE_MPI)
-
   /**
    * @brief initialize the sequence parser, estimate capacity and reserver, and then call read_block to parse the actual data.
    */
@@ -481,6 +568,49 @@ struct KmerFileHelper {
 
   }
 
+  template <typename KmerParser, template <typename> class SeqParser, template <typename,  template <typename> class> class SeqIterType, typename MinimizerKmerLoadMapType, typename BlockType>
+  static  ::std::pair<size_t, size_t> parse_file_data_old(const BlockType & partition,
+                         std::vector<typename KmerParser::value_type>& result, MinimizerKmerLoadMapType &minimizer_kmer_load_map, const mxx::comm & _comm) {
+      ::std::pair<size_t, size_t> read = {0,0};
+
+     constexpr int kmer_size = KmerParser::window_size;
+
+      BL_BENCH_INIT(file);
+      {
+        // not reusing the SeqParser in loader.  instead, reinitializing one.
+        BL_BENCH_START(file);
+        SeqParser<typename BlockType::const_iterator> seq_parser;
+        seq_parser.init_parser(partition.in_mem_cbegin(), partition.parent_range_bytes, partition.in_mem_range_bytes, partition.getRange(), _comm);
+        BL_BENCH_END(file, "mark_seqs", partition.getRange().size());
+
+        //== reserve
+        BL_BENCH_START(file);
+        // modifying the local index directly here causes a thread safety issue, since callback thread is already running.
+        // index reserve internally sends a message to itself.
+
+        // call after getting first L1Block to ensure that file is loaded.  (rank 0 reads and broadcast)
+        size_t record_size = 0;
+        size_t seq_len = 0;
+        std::tie(record_size, seq_len) = seq_parser.get_record_size(partition.cbegin(), partition.parent_range_bytes, partition.getRange(), partition.getRange(), _comm, 10);
+        size_t est_size = (record_size == 0) ? 0 : (partition.getRange().size() + record_size - 1) / record_size;  // number of records
+        est_size *= (seq_len < kmer_size) ? 0 : (seq_len - kmer_size + 1) ;  // number of kmers in a record
+        result.reserve(result.size() + est_size / 2);
+        BL_BENCH_END(file, "reserve", est_size);
+
+        BL_BENCH_START(file);
+        //=== copy into array
+        if (partition.getRange().size() > 0) {
+          read = read_block_old<KmerParser, SeqParser, SeqIterType, MinimizerKmerLoadMapType>(partition, seq_parser, result, minimizer_kmer_load_map);
+        }
+        BL_BENCH_END(file, "read_seqs", read.first);
+        // std::cout << "Last: pos - kmer " << result.back() << std::endl;
+      }
+
+      BL_BENCH_REPORT_MPI_NAMED(file, "index:read_file_data", _comm);
+      return read;
+
+  }
+  
   /**
    * @brief initialize the sequence parser, estimate capacity and reserver, and then call read_block to parse the actual data.
    */
@@ -578,6 +708,38 @@ struct KmerFileHelper {
       return read;
   }
 
+  template <typename FileType, typename KmerParser, template <typename> class SeqParser, template <typename,  template <typename> class> class SeqIterType, typename MinimizerKmerLoadMapType>
+  static  ::std::pair<size_t, size_t> read_file(const std::string & filename,
+                         std::vector<typename KmerParser::value_type>& result,
+                         MinimizerKmerLoadMapType &minimizer_kmer_load_map,
+                         const mxx::comm & _comm) {
+
+      ::std::pair<size_t, size_t> read = {0, 0};
+
+      constexpr int kmer_size = KmerParser::window_size;
+
+      BL_BENCH_INIT(file);
+      {  // ensure that fileloader is closed at the end.
+
+        BL_BENCH_START(file);
+        ::bliss::io::file_data partition = open_file<FileType>(filename, kmer_size - 1, _comm);
+        BL_BENCH_END(file, "open", partition.getRange().size());
+
+        //std::cout << "rank " << _comm.rank() << " mpiio " << partition.getRange() << " in mem " << partition.in_mem_range_bytes << std::endl;
+
+
+        // not reusing the SeqParser in loader.  instead, reinitializing one.
+        BL_BENCH_START(file);
+        read = parse_file_data_old<KmerParser, SeqParser, SeqIterType, MinimizerKmerLoadMapType>(partition, result, minimizer_kmer_load_map, _comm);
+        BL_BENCH_END(file, "read_kmers", read.second);
+        // std::cout << "Last: pos - kmer " << result.back() << std::endl;
+      }
+
+
+      BL_BENCH_REPORT_MPI_NAMED(file, "io:read_file", _comm);
+      return read;
+  }
+
 
   /**
    * @brief read a file's content and generate kmers, place in a vector as return result.
@@ -629,6 +791,20 @@ struct KmerFileHelper {
       // partitioned file with mmap or posix do not seem to be much faster than mpiio and may result in more jitter when congested.
       return read_file<::bliss::io::parallel::partitioned_file<::bliss::io::posix_file, SeqParser >,
           KmerParser, SeqParser, SeqIterType>(filename, result, _comm);
+
+  }
+
+  template <typename KmerParser, template <typename> class SeqParser, template <typename,  template <typename> class> class SeqIterType, typename MinimizerKmerLoadMapType>
+  static ::std::pair<size_t, size_t> read_file_posix(const std::string & filename,
+                         std::vector<typename KmerParser::value_type>& result,
+                         MinimizerKmerLoadMapType &minimizer_kmer_load_map,
+                         const mxx::comm & _comm) {
+
+
+
+      // partitioned file with mmap or posix do not seem to be much faster than mpiio and may result in more jitter when congested.
+      return read_file<::bliss::io::parallel::partitioned_file<::bliss::io::posix_file, SeqParser >,
+          KmerParser, SeqParser, SeqIterType, MinimizerKmerLoadMapType>(filename, result, minimizer_kmer_load_map, _comm);
 
   }
 #endif

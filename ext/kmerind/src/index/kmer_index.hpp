@@ -1,4 +1,4 @@
-/*
+ /*
  * Copyright 2015 Georgia Institute of Technology
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -202,9 +202,9 @@ public:
 		BL_BENCH_INIT(insert);
 
 		// do not reserve until insertion - less transient memory used.
-//		BL_BENCH_START(build);
-//		this->map.reserve(this->map.size() + temp.size());
-//		BL_BENCH_END(build, "reserve", temp.size());
+		// BL_BENCH_START(build);
+		// this->map.reserve(this->map.size() + temp.size());
+		// BL_BENCH_END(build, "reserve", temp.size());
 
 		// distribute
 		BL_BENCH_START(insert);
@@ -222,7 +222,34 @@ public:
 #endif
 		BL_BENCH_REPORT_MPI_NAMED(insert, "index:insert", this->comm);
 
-	 }
+	}
+
+		 template <typename T, typename MinimizerKmerLoadMapType>
+	void insert(std::vector<T> &temp, MinimizerKmerLoadMapType & minimizer_kmer_load_map) {
+		BL_BENCH_INIT(insert);
+
+		// do not reserve until insertion - less transient memory used.
+		// BL_BENCH_START(build);
+		// this->map.reserve(this->map.size() + temp.size());
+		// BL_BENCH_END(build, "reserve", temp.size());
+
+		// distribute
+		BL_BENCH_START(insert);
+		this->map.insert(temp, minimizer_kmer_load_map);  // COLLECTIVE CALL...
+		BL_BENCH_END(insert, "map_insert", this->map.local_size());
+
+#if (BL_BENCHMARK == 1)
+		BL_BENCH_START(insert);
+		size_t m = 0;  // here because sortmap needs it.
+		m = this->map.get_multiplicity();
+		BL_BENCH_END(insert, "multiplicity", m);
+#else
+		auto result = this->map.get_multiplicity();
+		BLISS_UNUSED(result);
+#endif
+		BL_BENCH_REPORT_MPI_NAMED(insert, "index:insert", this->comm);
+
+	}
 
 	 // Note that KmerParserType may depend on knowing the Sequence Parser Type (e.g. provide quality score iterators)
 	 //	Output type of KmerParserType may not match Map value type, in which case the map needs to do its own transform.
@@ -236,8 +263,8 @@ public:
 	 //     since Kmer template parameter is not explicitly known, we can't hard code the return types of KmerParserType.
 
 	 /// convenience function for building index.
-	 template <template <typename> class SeqParser, template <typename, template <typename> class> class SeqIterType>
-	 void build_mpiio(const std::string & filename, MPI_Comm comm) {
+		template <template <typename> class SeqParser, template <typename, template <typename> class> class SeqIterType>
+		void build_mpiio(const std::string & filename, MPI_Comm comm) {
 
 		 // file extension determines SeqParserType
 		 std::string extension = ::bliss::utils::file::get_file_extension(filename);
@@ -252,32 +279,32 @@ public:
 		 } else if (((extension.compare("fasta") == 0) || (extension.compare("fa") == 0)) && (!std::is_same<SeqParser<char*>, ::bliss::io::FASTAParser<char*> >::value)) {
 			 throw std::invalid_argument("Specified File Parser template parameter does not support files with fasta extension.");
 		 }
-     BL_BENCH_INIT(build);
+		BL_BENCH_INIT(build);
 
-		 // proceed
-     BL_BENCH_START(build);
-		 ::std::vector<typename KmerParser::value_type> temp;
-		 bliss::io::KmerFileHelper::template read_file_mpiio<KmerParser, SeqParser, SeqIterType>(filename, temp, comm);
-     BL_BENCH_END(build, "read", temp.size());
-
-
-		 //        // dump the generated kmers to see if they look okay.
-		 //         std::stringstream ss;
-		 //         ss << "test." << commRank << ".log";
-		 //         std::ofstream ofs(ss.str());
-		 //         for (int i = 0; i < temp.size(); ++i) {
-		 //          ofs << "item: " << i << " value: " << temp[i] << std::endl;
-		 //         }
-		 //         ofs.close();
-
-     BL_BENCH_START(build);
-		 this->insert(temp);
-     BL_BENCH_END(build, "insert", temp.size());
+			// proceed
+		BL_BENCH_START(build);
+			::std::vector<typename KmerParser::value_type> temp;
+			bliss::io::KmerFileHelper::template read_file_mpiio<KmerParser, SeqParser, SeqIterType>(filename, temp, comm);
+		BL_BENCH_END(build, "read", temp.size());
 
 
-     BL_BENCH_REPORT_MPI_NAMED(build, "index:build_mpiio", this->comm);
+			//        // dump the generated kmers to see if they look okay.
+			//         std::stringstream ss;
+			//         ss << "test." << commRank << ".log";
+			//         std::ofstream ofs(ss.str());
+			//         for (int i = 0; i < temp.size(); ++i) {
+			//          ofs << "item: " << i << " value: " << temp[i] << std::endl;
+			//         }
+			//         ofs.close();
 
-	 }
+		BL_BENCH_START(build);
+			this->insert(temp);
+		BL_BENCH_END(build, "insert", temp.size());
+
+
+		BL_BENCH_REPORT_MPI_NAMED(build, "index:build_mpiio", this->comm);
+
+		}
 
 
 	  /// convenience function for building index.
@@ -328,8 +355,8 @@ public:
 
 
 		 /// convenience function for building index.
-		 template <template <typename> class SeqParser, template <typename,  template <typename> class> class SeqIterType>
-		 void build_posix(const std::string & filename, MPI_Comm comm) {
+		template <template <typename> class SeqParser, template <typename,  template <typename> class> class SeqIterType>
+		void build_posix(const std::string & filename, MPI_Comm comm) {
 
 			 // file extension determines SeqParserType
 			 std::string extension = ::bliss::utils::file::get_file_extension(filename);
@@ -349,7 +376,11 @@ public:
 			 // proceed
 	     BL_BENCH_START(build);
 			 ::std::vector<typename KmerParser::value_type> temp;
-			 bliss::io::KmerFileHelper::template read_file_posix<KmerParser, SeqParser, SeqIterType>(filename, temp, comm);
+			//  std::array<size_t, 262144> minimizer_kmer_load_map{};
+			std::vector<size_t> minimizer_kmer_load_map(262144, 0);
+
+			//  bliss::io::KmerFileHelper::template read_file_posix<KmerParser, SeqParser, SeqIterType>(filename, temp, comm);
+			 bliss::io::KmerFileHelper::template read_file_posix<KmerParser, SeqParser, SeqIterType, std::vector<size_t>>(filename, temp, minimizer_kmer_load_map, comm);
 	     BL_BENCH_END(build, "read", temp.size());
 
 
@@ -362,18 +393,34 @@ public:
 			 //         }
 			 //         ofs.close();
 
+			  // print minimizer kmer load map
+				// std::cout << "Minimizer kmer load" << std::endl;
+				// for(int i=0; i<100 && i<minimizer_kmer_load_map.size(); i++) {
+				// std::cout << i << ":" << minimizer_kmer_load_map[i] << ", ";
+				// }
+				// for(int i=1; i<100 && i<minimizer_kmer_load_map.size(); i++) {
+				// std::cout << 262144-i << ":" << minimizer_kmer_load_map[262144-i] << ", ";
+				// }
+				// std::cout << std::endl;
+
+		 	// BL_BENCH_START(build);
+			
+	     	// BL_BENCH_END(build, "reduce minimizser kmer load map", minimizer_kmer_load_map.size());
+
 	     BL_BENCH_START(build);
-			 this->insert(temp);
+			//  this->insert(temp);
+			this->insert(temp, minimizer_kmer_load_map);
 	     BL_BENCH_END(build, "insert", temp.size());
 
 
 	     BL_BENCH_REPORT_MPI_NAMED(build, "index:build_posix", this->comm);
 
-		 }
+		}
 
 
 
 
+   
    typename MapType::const_iterator cbegin() const
    {
      return map.cbegin();
